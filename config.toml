@@ -1,4 +1,4 @@
-baseurl = "https://www.nielsenmark.us/"
+baseurl = "https://nielsenmark.us/"
 languageCode = "en-us"
 title = "nielsenmark.us"
 # Enable comments by entering your Disqus shortname
@@ -10,7 +10,6 @@ paginate = 10
 footnotereturnlinkcontents = "↩"
 theme = "hugo-icarus-theme"
 # Comment the themesDir option if you use this theme in production
-publishdir = "public"
 
 [permalinks]
     post = "/:year/:month/:day/:slug"
