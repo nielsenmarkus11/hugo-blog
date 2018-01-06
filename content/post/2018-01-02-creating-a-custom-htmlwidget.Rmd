@@ -1,0 +1,262 @@
+---
+title: Creating a Custom htmlwidget for Shiny
+author: Mark Nielsen
+date: '2018-01-02'
+slug: creating-a-custom-htmlwidget
+categories:
+  - Programming
+tags:
+  - d3
+  - htmlwidgets
+  - shiny
+  - rmarkdown
+---
+
+A year ago, `htmlwidgets` were a mystery to me. I was first introduced to them at a conference years ago. I previously used `rCharts` which I really liked because of the ability it gave me to customize my interactive graphs in Shiny. I approached an instructor and explained my interest in `rCharts` to him and he pointed me in the direction of `htmlwidgets`. Last year I finally decided to take that leap and give it a try.
+
+### Setting Up the HTMLWidget
+
+I started my learning with this [tutorial](http://www.htmlwidgets.org/develop_intro.html) from Ramnath V., Kenton R., and Rstudio on creating htmlwidgets, in which it defines that "the htmlwidgets package provides a framework for creating R bindings to JavaScript libraries." Following along with this tutorial we see that we can easily create our first htmlwidget.
+```{r, echo=TRUE, eval=FALSE}
+devtools::create("mywidget")
+setwd("mywidget")
+htmlwidgets::scaffoldWidget("mywidget")
+devtools::install()
+```
+
+One thing to note about htmlwidgets is that they are always hosted in an R package to ensure full reproducibility.
+
+### File Structure
+
+Next, let's follow the tutorial further and take a look at the file structure.
+<pre><code>
+.
+├── DESCRIPTION
+├── inst
+│   └── htmlwidgets
+│       ├── mywidget.js
+│       └── mywidget.yaml
+├── mywidget.Rproj
+├── NAMESPACE
+└── R
+    └── mywidget.R
+</code></pre>
+
+We see here that in order to bind our JavaScript library to our new R package we need to include both some R code (`mywidget.R`) and JavaScript (`mywidget.js`).  All the JavaScript, YAML, and other dependencies will be located in the `inst\htmlwidgets` folder.  The R code is located in the `R` folder which should define the inputs to our new function we are creating. Below you can see the sample htmlwidget we have created takes a character string as input and it will create a html page and pass through our character string to the JavaScript code.
+
+```{r, eval=TRUE, echo=TRUE}
+library(mywidget)
+mywidget("Hello World",height="100px")
+```
+
+Vioala! Your first htmlwidget AND the classic "Hello World". Okay, okay... maybe this isn't as awesome as you were thinking, but we can do even better. Are you ready to create your first htmlwidget?
+
+### Step 1: Adding your own JavaScript code
+
+First let's find some code for the popular JavaScript library D3. I am not a web developer so I found mine in a blog post by Mike Bostock. I really liked the functionality and look of his D3 implementation of [hive plots](https://bost.ocks.org/mike/hive/). Hive plots are credited to Martin Krzysinski.  You'll find Martin's introduction to hive plots [here](https://academic.oup.com/bib/article/13/5/627/412507/Hive-plots-rational-approach-to-visualizing). A simpler version of Mike's implementation is found [here](https://bl.ocks.org/mbostock/2066415).
+
+Now that I've got my code I'm going to replace the JavaScript code in `./inst/htmlwidgets/hive.js` with this:
+<pre>
+<code class="hljs" data-trim>
+```{r echo=FALSE, eval=TRUE, results='asis'}
+cat(readLines("~/git/hiveD3/inst/htmlwidgets/hive_no_int.js"),sep = "\n")
+```
+</code>
+</pre>
+
+Next, I copy supporting JS and CSS code into `./inst/htmlwidgets/lib/` folder. For this project I'll need `d3.js` as well as some code from Mike's post to create our visualization. Here's what is now contained in the `./inst/htmlwidgets/lib/` folder:
+```{r echo=FALSE, eval=TRUE}
+cat(paste(list.files("~/git/hiveD3/inst/htmlwidgets/lib",recursive = TRUE), collapse="\n"))
+```
+
+And finally, I define those dependencies in `./inst/htmlwidgets/hive.yaml` as seen below:
+<pre>
+<code class="hljs" data-trim>
+```{r echo=FALSE, eval=TRUE, results='asis'}
+cat(readLines("~/git/hiveD3/inst/htmlwidgets/hive_no_int.yaml"),sep = "\n")
+```
+</code>
+</pre>
+Now that our dependencies are defined we can now create the bindings between R and JavaScript.
+
+
+### Step 2: Create the Bindings
+Okay, the goal in this next step is to get our R dataframe to look just like this d3 dataset from the hive plot D3 code.
+<pre>
+<code class="hljs" data-trim>
+var nodes = [
+  {x: 0, y: .1},
+  {x: 0, y: .9},
+  {x: 1, y: .2},
+  {x: 1, y: .3},
+  {x: 2, y: .1},
+  {x: 2, y: .8}
+];
+var links = [
+  {source: nodes[0], target: nodes[2]},
+  {source: nodes[1], target: nodes[3]},
+  {source: nodes[2], target: nodes[4]},
+  {source: nodes[2], target: nodes[5]},
+  {source: nodes[3], target: nodes[5]},
+  {source: nodes[4], target: nodes[0]},
+  {source: nodes[5], target: nodes[1]}
+];
+</code>
+</pre>
+
+First, let's tell R what it needs to pass through to our JavaScript library. This is done by creating a function that will take our data and options as arguments and combine them into a list. This list is then passed through the `htmlwidget::createWidget` function to be picked up by our JavaScript code. Below I used code provided in Rstudio's tutorial and also replicate the options `innerRadius`, `outerRadius`, and `opacity` from Mike Bostock's function:
+```{r, echo=TRUE, eval=FALSE}
+hive <- function(nodes, 
+                 links, 
+                 innerRadius = 40, 
+                 outerRadius = 240, 
+                 opacity = 0.7, 
+                 width = NULL, 
+                 height = NULL, 
+                 elementId = NULL) {
+
+  # sort in order of node id
+  if("id" %in% colnames(nodes)) {
+    nodes <- nodes[order(nodes$id),]
+    nodes$id <- NULL
+  }
+
+  # color by axis if no coloring is supplied
+  if(!("color" %in% colnames(nodes))) {
+    nodes$color <- nodes$x
+  }
+
+  # forward options using x
+  x = list(
+    nodes = nodes,
+    links = links,
+    numAxis = max(nodes$x)+1,
+    options = list(innerRadius=innerRadius,
+                   outerRadius=outerRadius,
+                   opacity=opacity)
+  )
+
+  # create widget
+  htmlwidgets::createWidget(
+    name = 'hive',
+    x,
+    width = width,
+    height = height,
+    package = 'hiveD3',
+    elementId = elementId
+  )
+}
+```
+
+Notice above that the objects `nodes` and `links` are R dataframes and that the final list `x` is passed through to JS. 
+
+Now that we've defined our R binding, let's take a minute and set up the JavaScript binding in the `hive.js` file. For d3, we use the `dataframeToD3()` helper function. I'm not awesome with JavaScript, so I'm going to avoid making too many changes to this code:
+<pre>
+<code class="hljs" data-trim>
+// alias options
+var options = x.options;
+
+// convert links and nodes data frames to d3 friendly format
+var nodes = HTMLWidgets.dataframeToD3(x.nodes);
+var prelinks = HTMLWidgets.dataframeToD3(x.links);
+
+// create json of link sources and targets
+var links = [];
+prelinks.forEach(function(d){
+  var tmp = {};
+  tmp.source=nodes[d.source];
+  tmp.target=nodes[d.target];
+  links.push(tmp);
+});
+</code>
+</pre>
+
+To give you an understanding of what is under the hood of the `dataframeToD3` function, `jsonlite::toJSON` is used to convert the dataframe to long-form representation. And when you look at the data you can see that recreating `nodes` is easy. As for `links`, we read in the data as `prelinks` then we need to add a loop to loop through each item of `prelinks` and finally create `links` just like it is in Mike's JavaScript code.
+
+### Step 3: Putting it all together
+
+All of our bindings are set up and once I've built and loaded my package, we're ready to define some dataframes and test out our new htmlwidget.
+
+```{r, echo=TRUE, eval=FALSE}
+library(hiveD3)
+nodes = data.frame(id=c(0,1,2,3,4,5,6,7,8),
+                   x=c(0,0,1,1,2,2,3,3,4), 
+                   y=c(.1,.9,.2,.3,.1,.8,.3,.5,.9))
+links = data.frame(source=c(0,1,2,2,3,4,5,6,7,8,8),
+                   target=c(2,3,4,5,5,6,7,8,8,0,1))
+
+
+hive_no_int(nodes=nodes,links=links, width = "700px", height = "500px")
+```
+
+When we run the `hive` function we see our new visualization! Note that for demonstration purposes only I've renamed this first function `hive_no_int`.
+```{r, eval=TRUE, echo=FALSE}
+library(hiveD3)
+nodes = data.frame(id=c(0,1,2,3,4,5,6,7,8),
+                   x=c(0,0,1,1,2,2,3,3,4), 
+                   y=c(.1,.9,.2,.3,.1,.8,.3,.5,.9))
+links = data.frame(source=c(0,1,2,2,3,4,5,6,7,8,8),
+                   target=c(2,3,4,5,5,6,7,8,8,0,1))
+
+
+p1 <- hive_no_int(nodes=nodes,links=links, width = "700px", height = "500px")
+p1
+```
+
+Alright! We're ready to show off our work, but can you guess the first question that is going to be asked of you? Your friends may think it's cool, but will say "Why doesn't it do anything when I hover over it?" or "Why can't I interact with it?" Well, so much for not having to tweak any JavaScript code. It's time to dive in and add some interactivity.
+
+### Step 4: Making Finishing Touches
+
+Let's look at some next steps in getting our htmlwidget ready for prime time:
+- Adding interaction
+- Creating and sharing your package
+- Creating R documentation using RStudio and `roxygen2`
+- Adding your package to [htmlwidget gallery](http://gallery.htmlwidgets.org/)
+
+We've talked about adding interaction, and once that is ready you can share your new package in several ways. Make sure to create helpful documentation for your new package before sharing on Github or on the [htmlwidget gallery](http://gallery.htmlwidgets.org/).
+
+#### The Final Product
+
+Great! I've gone ahead and added my package to GitHub. Of course, I did this after making sure to create some documentation and interactivity... and finally, we can show it off.
+```{r, echo=TRUE, eval=FALSE}
+library(devtools)
+install_github('nielsenmarkus11/hiveD3')
+
+library(hiveD3)
+
+nodes = data.frame(id=c(0,1,2,3,4,5,6,7,8),
+                   x=c(0,0,1,1,2,2,3,3,4), 
+                   y=c(.1,.9,.2,.3,.1,.8,.3,.5,.9))
+links = data.frame(source=c(0,1,2,2,3,4,5,6,7,8,8),
+                   target=c(2,3,4,5,5,6,7,8,8,0,1))
+
+hive(nodes=nodes,links=links, width = "700px", height = "500px")
+```
+
+```{r, eval=TRUE, echo=FALSE}
+library(rmarkdown)
+library(hiveD3)
+
+nodes = data.frame(id=c(0,1,2,3,4,5,6,7,8),
+                   x=c(0,0,1,1,2,2,3,3,4), 
+                   y=c(.1,.9,.2,.3,.1,.8,.3,.5,.9))
+links = data.frame(source=c(0,1,2,2,3,4,5,6,7,8,8),
+                   target=c(2,3,4,5,5,6,7,8,8,0,1))
+
+p1 <- hive(nodes=nodes,links=links, width = "700px", height = "500px")
+p1
+```
+
+Thanks for taking some time to check out my explorations with `htmlwidgets`.  What are the next steps for your project?  Maybe someday I'll put my stuff out on CRAN, and I definitely want to add some more interactivity and flexibility to my package. You can download and check it out by installing it from [my GitHub page](https://github.com/nielsenmarkus11/hiveD3). Good luck!
+
+## References
+- Bostock M, Morin R (2012). [Hive Plots](https://bost.ocks.org/mike/hive/). Retrieved from https://bost.ocks.org/mike/hive/.
+
+- Bostock M (2016). [Hive Plot (Links)](https://bl.ocks.org/mbostock/2066415). Retrieved from https://bl.ocks.org/mbostock/2066415.
+
+- Bostock M (2017). [D3 Data-Driven Documents](https://d3js.org/). Retrieved from https://d3js.org/.
+
+- Krzywinski M, Birol I, Jones S, Marra M (2011). [Hive Plots — Rational Approach to Visualizing Networks](https://academic.oup.com/bib/article/13/5/627/412507/Hive-plots-rational-approach-to-visualizing). Briefings in Bioinformatics (early access 9 December 2011, doi: 10.1093/bib/bbr069).
+
+- Vaidyanathan R, Russell K, RStudio, Inc. (2014-2015). [Creating a widget](http://www.htmlwidgets.org/develop_intro.html). Retrieved from http://www.htmlwidgets.org/develop_intro.html.
+</section>
