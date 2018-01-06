@@ -1,5 +1,5 @@
 ---
-title: Creating a Custom htmlwidget
+title: Creating a Custom htmlwidget for Shiny
 author: Mark Nielsen
 date: '2018-01-02'
 slug: creating-a-custom-htmlwidget
@@ -21,8 +21,6 @@ tags:
 <script src="/rmarkdown-libs/hive-binding/hive.js"></script>
 
 
-<div id="creating-custom-htmlwidgets-for-shiny" class="section level1">
-<h1>Creating custom htmlwidgets for Shiny</h1>
 <p>A year ago, <code>htmlwidgets</code> were a mystery to me. I was first introduced to them at a conference years ago. I previously used <code>rCharts</code> which I really liked because of the ability it gave me to customize my interactive graphs in Shiny. I approached an instructor and explained my interest in <code>rCharts</code> to him and he pointed me in the direction of <code>htmlwidgets</code>. Last year I finally decided to take that leap and give it a try.</p>
 <div id="setting-up-the-htmlwidget" class="section level3">
 <h3>Setting Up the HTMLWidget</h3>
@@ -58,7 +56,7 @@ mywidget(&quot;Hello World&quot;,height=&quot;100px&quot;)</code></pre>
 <div id="step-1-adding-your-own-javascript-code" class="section level3">
 <h3>Step 1: Adding your own JavaScript code</h3>
 <p>First let’s find some code for the popular JavaScript library D3. I am not a web developer so I found mine in a blog post by Mike Bostock. I really liked the functionality and look of his D3 implementation of <a href="https://bost.ocks.org/mike/hive/">hive plots</a>. Hive plots are credited to Martin Krzysinski. You’ll find Martin’s introduction to hive plots <a href="https://academic.oup.com/bib/article/13/5/627/412507/Hive-plots-rational-approach-to-visualizing">here</a>. A simpler version of Mike’s implementation is found <a href="https://bl.ocks.org/mbostock/2066415">here</a>.</p>
-Now that I’ve got my code I’m going to replace JS code in <code>./inst/htmlwidgets/hive.js</code> with this:
+Now that I’ve got my code I’m going to replace the JavaScript code in <code>./inst/htmlwidgets/hive.js</code> with this:
 <pre>
 <code class="hljs" data-trim>
 HTMLWidgets.widget({
@@ -151,7 +149,7 @@ HTMLWidgets.widget({
 });
 </code>
 </pre>
-<p>Next, I copy supporting JS and CSS code into <code>./inst/htmlwidgets/lib/</code> folder. For this project I’ll need <code>d3.js</code> as well as some code to create our visualization. Here’s what is now contained in the <code>./inst/htmlwidgets/lib/</code> folder:</p>
+<p>Next, I copy supporting JS and CSS code into <code>./inst/htmlwidgets/lib/</code> folder. For this project I’ll need <code>d3.js</code> as well as some code from Mike’s post to create our visualization. Here’s what is now contained in the <code>./inst/htmlwidgets/lib/</code> folder:</p>
 <pre><code>## d3-3.0/d3.v3.min.js
 ## hive-0.1/d3.hive.min.js
 ## hive-0.1/hive.css</code></pre>
@@ -301,7 +299,7 @@ links = data.frame(source=c(0,1,2,2,3,4,5,6,7,8,8),
 hive(nodes=nodes,links=links, width = &quot;700px&quot;, height = &quot;500px&quot;)</code></pre>
 <div id="htmlwidget-3" style="width:700px;height:500px;" class="hive html-widget"></div>
 <script type="application/json" data-for="htmlwidget-3">{"x":{"nodes":{"x":[0,0,1,1,2,2,3,3,4],"y":[0.1,0.9,0.2,0.3,0.1,0.8,0.3,0.5,0.9],"color":[0,0,1,1,2,2,3,3,4]},"links":{"source":[0,1,2,2,3,4,5,6,7,8,8],"target":[2,3,4,5,5,6,7,8,8,0,1]},"numAxis":5,"options":{"innerRadius":40,"outerRadius":240,"opacity":0.7}},"evals":[],"jsHooks":[]}</script>
-<p>Thanks for taking some time to check out my explorations with <code>htmlwidgets</code>. What are the next steps for your project. Maybe someday I’ll put my stuff out on CRAN, but I definitely want to add some more interactivity and flexibility to my package. You can download and check it out by installing it from <a href="https://github.com/nielsenmarkus11/hiveD3">my GitHub page</a>. Good luck!</p>
+<p>Thanks for taking some time to check out my explorations with <code>htmlwidgets</code>. What are the next steps for your project? Maybe someday I’ll put my stuff out on CRAN, and I definitely want to add some more interactivity and flexibility to my package. You can download and check it out by installing it from <a href="https://github.com/nielsenmarkus11/hiveD3">my GitHub page</a>. Good luck!</p>
 </div>
 </div>
 <div id="references" class="section level2">
@@ -314,5 +312,4 @@ hive(nodes=nodes,links=links, width = &quot;700px&quot;, height = &quot;500px&qu
 <li>Vaidyanathan R, Russell K, RStudio, Inc. (2014-2015). <a href="http://www.htmlwidgets.org/develop_intro.html">Creating a widget</a>. Retrieved from <a href="http://www.htmlwidgets.org/develop_intro.html" class="uri">http://www.htmlwidgets.org/develop_intro.html</a>.
 </section></li>
 </ul>
-</div>
 </div>
