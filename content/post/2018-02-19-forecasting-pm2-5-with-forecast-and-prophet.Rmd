@@ -15,7 +15,7 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 load("../../../time-series/data/ts-dat.Rdat")
 ```
 
-Time series, the course I often wish I had taken while completing my coursework in school.  I finally got an excuse to do a comparitive dive into the different time series models in the `forcast` package in R thanks to an invitation to present at a recent Practical Data Science Meetup in Salt Lake City.
+Time series, the course I often wish I had taken while completing my coursework in school.  I finally got an excuse to do a comparitive dive into the different time series models in the `forecast` package in R thanks to an invitation to present at a recent Practical Data Science Meetup in Salt Lake City. In the following exercise, I'll be comparing OLS and Random Forest Regression to the time series models available in the `forecast` package.  In addition to this I'll be taking a look at the fairly new `prophet` package released by facebook for R.
 
 ```{r libraries}
 library(tidyverse)
@@ -26,6 +26,9 @@ library(randomForest)
 library(forecast)
 library(prophet)
 ```
+
+### Data Collection
+The pollution data I'll be using for this examples comes from epa.gov and the weather data comes from ncdc.noaa.gov.  You can access my R data object on [my github](https://github.com/nielsenmarkus11/time-series) page.  Salt Lake City for many years has experienced population growth which has exasterbated the inversion problem.  Inversion creates a "cap" over Utah valleys trapping pollutants on the valley floors which creates many public health issues because of the thick smog.  I've downloaded weather data from both the valley floor at SLC International Airport and in a meadow near Grand View peak in the Wasatch mountains.  These two sites' temperatures can be used to compute whether the temperatures are inverted.  Along with these two weather sites you can see the 4 other sites where data is being collected on pollution levels.  I will be focusing particulary on PM2.5 measures across the Salt Lake Valley.
 
 ```{r sensor-locs}
 # Visualize sensor locations
@@ -56,6 +59,7 @@ m
 ```
 
 ### OLS Regression
+First, let's take a look at how well our weather regressors are at predicting PM2.5 levels without considering autocorrelation or seasonality.  Below, we will fit our model and look at our residuals to make sure our assumptions of normality and independence are met:
 ```{r reg}
 fit1 <- lm(sqrt(pm2.5)~inversion+wind+precip+fireworks,data=dat)
 summary(fit1)
@@ -67,12 +71,18 @@ ggplot(dat,aes(date,resid)) +
   geom_point() + geom_smooth() +
   ggtitle("Linear Regression Residuals",
           subtitle = paste0("RMSE: ",round(sqrt(mean(dat$resid^2,na.rm=TRUE)),2)))
+```
 
+Okay, so when we review the model we see that the variables are somewhat useful in predicting PM2.5 levels, however our r-squared values are not that impressive.  Also, looking at our residuals, we can see that there is still something going on that we haven't accounted for.  There appears to be a yearly pattern in the residuals.  Let's use the autocorrelation function, `Acf()` available in the `forecast` package:
+```{r acf}
 Acf(dat$resid, main="ACF of OLS Residuals")
 ```
 
+Here we can see that the data is correlated up through about 12 days in the past.  This definitely violates our assumption of independence. Let's keep this in mind as we consider other models.
 
 ### Random Forest Regression
+Random Forest models don't have as many assumptions as OLS Regression, so let's try this model to see if we can do any better. I know that my RMSE's are coming from the training data itself, so it won't be as helpful in evaluating the predict-ability of our models.  Later, I use time series cross-validation to compare each of the methods ability to predict future PM2.5 levels.
+
 ```{r}
 fit2 <- randomForest(sqrt(pm2.5)~inversion+wind+precip+fireworks,data=dat[!is.na(dat$pm2.5),], ntree=500)
 dat$rf.resid[!is.na(dat$pm2.5)] <- fit2$predicted - sqrt(dat$pm2.5[!is.na(dat$pm2.5)])
