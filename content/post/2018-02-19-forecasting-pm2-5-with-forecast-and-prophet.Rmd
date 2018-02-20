@@ -81,9 +81,9 @@ Acf(dat$resid, main="ACF of OLS Residuals")
 Here we can see that the data is correlated up through about 12 days in the past.  This definitely violates our assumption of independence. Let's keep this in mind as we consider other models.
 
 ### Random Forest Regression
-Random Forest models don't have as many assumptions as OLS Regression, so let's try this model to see if we can do any better. I know that my RMSE's are coming from the training data itself, so it won't be as helpful in evaluating the predict-ability of our models.  Later, I use time series cross-validation to compare each of the methods ability to predict future PM2.5 levels.
+Random Forest models don't have as many assumptions as OLS Regression, so let's try this model to see if we can do any better. I know that my RMSE's are coming from the training data itself, so it won't be as helpful in evaluating the predict-ability of our models.  Later, I will use time series cross-validation to compare each of the methods ability to predict future PM2.5 levels.
 
-```{r}
+```{r rf}
 fit2 <- randomForest(sqrt(pm2.5)~inversion+wind+precip+fireworks,data=dat[!is.na(dat$pm2.5),], ntree=500)
 dat$rf.resid[!is.na(dat$pm2.5)] <- fit2$predicted - sqrt(dat$pm2.5[!is.na(dat$pm2.5)])
 
@@ -94,6 +94,10 @@ ggplot(dat,aes(date,rf.resid)) +
           subtitle = paste0("RMSE: ",round(sqrt(fit2$mse[500]),2)))
 # Better but we still have some odd things going on in our data
 
+```
+Once again, after looking at the residuals it still looks like something is going on here.  We still notice that there looks like there is still a seasonal trend in our residuals.  Let's also zoom in on our residual plots ordered by time and take a look:
+
+```{r rf-zoom}
 # Zoom In
 p1 <- ggplot(dat,aes(date,rf.resid)) + 
   geom_point() + geom_line() +
@@ -109,9 +113,12 @@ p2 <- ggplot(dat,aes(date,rf.resid)) +
 grid.arrange(p1, p2, ncol=2, top="Zoom-in of Random Forest Residuals")
 
 ```
+If you look closely you can see that we still haven't adjusted our model for the autocorrelation that is evidenced in this zoomed in residual plot. It appears that the residuals are all negative for a time then they move to be all positive.
+
 
 ### Exponential Smoothing
-```{r}
+Okay, let's get started with one of the more simple time series models, Exponential Smoothing.  This is done by first converting our target column to a time series object using the `ts()` function.  The `ts()` function also allows us to include a seasonal component to our data.  We'll start by setting `frequency = 7` to include weekly seasonality in our daily PM2.5 measures. In this excersize I will be fitting 3 different models. The default `model` argument is set to `'ZZZ'` which will choose additive (`'A'`), multiplicative (`'M'`), or none (`'N'`) for each of the errors, trend, and seasonality.  Our automated model has chosen `'MAN'`.  Notice that this essentially removing the weekly seasonality which can be seen in the forecast below. I also fit models using all additive and all multiplicative for comparison.
+```{r ets}
 # Convert to time series data
 dat.ts <- sqrt(ts(dat[,"pm2.5"], frequency = 7))
 
@@ -120,10 +127,16 @@ fit3 <- ets(dat.ts) # model = "MAN"
 fit4a <- ets(dat.ts, model ="AAA")
 fit4b <- ets(dat.ts, model ="MMM")
 # Fit models with all additive or all multiplicative features. First byte is for errors, second for trend, and third for seasonality
+```
 
+Notice that similar to linear models, the `predict()` function is available but can also be used to forecast future values based on previous values by adding an argument for the horizon, `h`.  Below, I'm using the automated `ets` model to predict 25 days into the future:
+```{r ets-forecast}
 # Predict Future Values
 plot(predict(fit3,h=25),xlim=c(200,215))
+```
 
+Now going back to our 3 models, we can take a look at the residuals now that we are adjusting for autocorrelation and weekly seasonality:
+```{r ets-resid}
 ets.mod <- rbind(data.frame(day=1:sum(!is.na(dat.ts)), resid=as.numeric(residuals(fit3)), type="Auto"),
                  data.frame(day=1:sum(!is.na(dat.ts)), resid=as.numeric(residuals(fit4a)), type="Additive"),
                  data.frame(day=1:sum(!is.na(dat.ts)), resid=as.numeric(residuals(fit4b)), type="Multiplicative"))
@@ -138,18 +151,29 @@ ggplot(ets.mod,aes(day,resid)) +
                             "   Multiplicative RMSE: ",round(sqrt(fit4b$mse),2)))
 
 ```
+There we go! Our residuals look much better, there still does appear to be some yearly seasonality that we can incorporate using some more sophisticated time series models.  Let's start with Rob Hyndman's implementation of the TBATS model.
 
 ### TBATS (Trigonometric regressors, Box-Cox transformations, ARMA errors, Trend, Seasonality)
-```{r}
+Using the TBATS model is one way to incorporate multiple seasonality in our model.  It's going to automate the process of choosing a Box-Cox transformation for our target variable, PM2.5.  You may have noticed that I've been taking the square root of PM2.5 in each of our previous models and this in part was due to the recommended Box-Cox parameter of 0.5 that came out of this model when I was first playing around with the `tbats()` function. This function will also automatically choose the parameters for the ARMA model and the fourier transforms for the seasonal trends.
+
+```{r tbats}
 # TBATS model with weekly and yearly seasonality
 dat.ts2 <- sqrt(msts(dat[!is.na(dat$pm2.5),"pm2.5"], seasonal.periods=c(7,365.25)))
 fit5 <- tbats(dat.ts2)
 # This method takes the most time when comparing run time.
 # Down side on this is that you cannot set specific box-cox, ARMA, and fourier parameters.
+```
+This time series model is easy to use and can be extremely useful when modeling mutiple seasonality and autoregressive features.  I do wish the `tbats()` function would allow you to pass specific Box-Cox, ARMA, and fourier parameters for your model.  This would make cross-validation of my models more convenient by allowing me to be able to set the specific model for each window.
 
+Once again, you can see that predicting future values is made very easy with the `predict()` function and `h` parameter.
+
+```{r tbats-predict}
 # Predict future values
 plot(predict(fit5, h=25),xlim=c(4.8,5.2))
+```
 
+Lastly, let's look at the residuals and see if adding both yearly and weekly seasonality have improved our predictions:
+```{r tbats-resid}
 # Plot the residuals
 tbats.mod <- data.frame(day=1:sum(!is.na(dat.ts2)),resid=as.numeric(residuals(fit5)))
 ggplot(tbats.mod,aes(day,resid)) + 
@@ -157,11 +181,15 @@ ggplot(tbats.mod,aes(day,resid)) +
   ggtitle("TBATS Resids with Dual Seasonality",
           subtitle = paste0("Auto RMSE: ",round(sqrt(mean((residuals(fit5))^2)),2)))
 ```
+Wow! This looks much better. This random cloud of data around the line `y = 0` is typically what we are looking for in a good model fit. Notice also that the training RMSE is much better for this model.
 
 ### ARIMA with Regressors (AutoRegressive Integraged Moving Average)
+The last piece to time series models is being able to add regressors to the multiple seasonality and autocorrelation adjustments.  The `auto.arima()` function can have all of these included in the model by using the `fourier()` transform function and the `xreg` argument.
+
+In this exercise, because my regressors are also time series I need to make sure that I also forcast each fo those regressors before forecasting the PM2.5 level.
 ```{r}
 # ARIMA with weekly and yearly seasonality with regressors
-regs <- dat[!is.na(dat$pm2.5),c("precip","wind","inversion_diff","fireworks")]
+regs <- dat[!is.na(dat$pm2.5),c("precip","wind","inversion","fireworks")]
 
 # Forecast weather regressors
 weather.ts <- msts(dat[,c("precip","wind","inversion_diff")],seasonal.periods = c(7,365.25))
@@ -185,7 +213,10 @@ fit <- auto.arima(dat.ts2, xreg=cbind(z,regs), seasonal=FALSE)
 # This time we need future values of the regressors as well.
 fc <- forecast(fit, xreg=cbind(zf,fregs), h=25)
 plot(fc,xlim=c(4.8,5.2))
+```
 
+Again, the residuals do look much better than our residuals from the OLS and Random Forest Regression models. 
+```{r arima-resid}
 # Plot the residuals
 arima.mod <- data.frame(day=1:sum(!is.na(dat.ts)),resid=as.numeric(residuals(fit)))
 
@@ -196,6 +227,7 @@ ggplot(arima.mod,aes(day,resid)) +
 ```
 
 ### prophet
+And finally, let's take a look at fitting a basic model using the `prophet` package. The `prophet` package is using STAN to to fit an additive model by including seasonality, autocorrelation, extra regressors, etc.  One of the nice features of the `prophet()` function is that it will also automatically choose change points in your time series.  The default number of change points is set to `25`.  This allows the time series models to be a little bit more robust in comparison to other models.  Once again, I'm also using the `prophet()` forecast function to forecast my regressors that I'm passing into the final `prophet` model to predict PM2.5.
 ```{r}
 pdat <- data.frame(ds=dat$date,
                    y=sqrt(dat$pm2.5),
@@ -235,10 +267,15 @@ fit6 <- prophet() %>%
   add_regressor('inversion') %>% 
   add_regressor('fireworks') %>% 
   fit.prophet(pdat)
+```
+We also see that the predict funtion can also be used with the `prophet` model object to forecast future values by adding the future dataframe as a second argument to the `predict()` function.
 
+```{r prophet-forecast}
 # Forecast future values
 forecast <- predict(fit6, fdat)
-
+```
+Looking at the residuals below, you can see that we're starting to see some of the seasonal trend in the residuals that we did previously in the OLS and Random Forest models.
+```{r prophet-resid}
 # Get the residuals
 fpred <- predict(fit6)
 fpred$ds <- as.Date(fpred$ds)
@@ -253,22 +290,22 @@ ggplot(fpred,aes(ds,resid)) +
 
 ```
 
-### Comparison (Show in PowerPoint)
-```{r}
-# RMSE by cutoff
-all.cv %>% 
-  group_by(model,cutoff) %>% 
-  summarise(rmse=sqrt(mean((y-yhat)^2))) %>% 
-  ggplot(.,aes(x=cutoff,y=rmse,group=model,color=model)) +
-  geom_line(alpha=.75) + geom_point(alpha=.75)
 
+### Cross-Validation Comparison of Models
+Okay, now that we've gone over the basics of each of the models, let's compare how well the models predict future PM2.5 levels.  This cross validation is performed by assigning a rolling window in our time series.  We split this window into two pieces, the "initial" time period and the "horizon".  We fit our model using the initial time period and compare our prediction of the horizon to its actual values.  I picked the RMSE as my loss function in evaluating predictive performance.
+
+A typical comparison is to compute the RMSE for each of the days in your horizon by combining all the differences between 'y' and 'yhat' from each of your rolling validations:
+```{r}
 # RMSE by horizon
 all.cv %>% 
   group_by(model,day) %>% 
   summarise(rmse=sqrt(mean((y-yhat)^2))) %>% 
   ggplot(.,aes(x=day,y=rmse,group=model,color=model)) +
   geom_line(alpha=.75) + geom_point(alpha=.75)
+```
+This is definitely an interesting result. Clearly the Exponential Smoothing model is not the best predictor with this data. Also, when comparing how well each model predicts future events, it appears that the OLS and Random Forest regression models perform just as well as the TBATS, ARIMA, and prophet models.  In the plot below, we can also take a look at how each of these forecasted data looks like for the year of 2017.
 
+```{r}
 # Prediction behaviors of different methods
 ggplot(all.cv,aes(date,yhat,group=as.factor(cutoff),color=as.factor(cutoff)))+
   geom_line()+
@@ -278,3 +315,27 @@ ggplot(all.cv,aes(date,yhat,group=as.factor(cutoff),color=as.factor(cutoff)))+
         axis.text.x=element_blank(),
         axis.ticks.x=element_blank())
 ```
+
+Some of the things that you'll probably notice first off is:
+* The reason the Exponental Smoothing model didn't perform so well.
+* Since I don't know the future regressors' values for OLS and Random Forest regression, I just set them to the values at the end of each initial window, which resulted in straight line forecasts.
+* ARIMA appears to not be as robust as other methods.
+
+### Conclusion
+Of all these methods, I would probably decide on either the TBATS or prophet model in forecasting future data.  I hope you have enjoyed these exercises and intro to time series in R!
+
+
+### Where to learn more?
+* [FutureLearn Forecasting MOOC](https://www.futurelearn.com/courses/business-analytics-forecasting)
+* [Forecasting: Principles and Practice](http://otexts.org/fpp/)
+* [Prophet: Forecasting at Scale](https://facebook.github.io/prophet/)
+
+### References
+Hyndman, R.J. and Athanasopoulos, G. (2013) Forecasting: principles and practice. OTexts: Melbourne, Australia. http://otexts.org/fpp/. Accessed on February 11, 2018. 
+
+National Center for Environmental Information. Climate Data Online available at https://www.ncdc.noaa.gov/cdo-web. Accessed February 11, 2018. 
+
+Sean Taylor and Ben Letham (2017). prophet: Automatic Forecasting Procedure. R package version 0.2.1.9000. https://facebook.github.io/prophet/. 
+
+US Environmental Protection Agency. Air Quality System Data Mart [internet database] available at http://www.epa.gov/ttn/airs/aqsdatamart. Accessed?February 11, 2018.
+
