@@ -12,10 +12,11 @@ tags:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
-load("../../../time-series/data/ts-dat.Rdat")
 ```
 
-Time series, the course I often wish I had taken while completing my coursework in school.  I finally got an excuse to do a comparitive dive into the different time series models in the `forecast` package in R thanks to an invitation to present at a recent Practical Data Science Meetup in Salt Lake City. In the following exercise, I'll be comparing OLS and Random Forest Regression to the time series models available in the `forecast` package.  In addition to this I'll be taking a look at the fairly new `prophet` package released by facebook for R.
+Time series, the course I often wish I had taken while completing my coursework in school.  I finally got an excuse to do a comparitive dive into the different time series models in the `forecast` package in R thanks to an invitation to present at a recent Practical Data Science Meetup in Salt Lake City. 
+
+In the following exercises, I'll be comparing OLS and Random Forest Regression to the time series models available in the `forecast` package.  In addition to this I'll be taking a look at the fairly new `prophet` package released by facebook for R. Alright, let's load some packages to get started.
 
 ```{r libraries}
 library(tidyverse)
@@ -25,12 +26,16 @@ library(leaflet)
 library(randomForest)
 library(forecast)
 library(prophet)
+
+load("../../../time-series/data/ts-dat.Rdat")
 ```
 
 ### Data Collection
-The pollution data I'll be using for this examples comes from epa.gov and the weather data comes from ncdc.noaa.gov.  You can access my R data object on [my github](https://github.com/nielsenmarkus11/time-series) page.  Salt Lake City for many years has experienced population growth which has exasterbated the inversion problem.  Inversion creates a "cap" over Utah valleys trapping pollutants on the valley floors which creates many public health issues because of the thick smog.  I've downloaded weather data from both the valley floor at SLC International Airport and in a meadow near Grand View peak in the Wasatch mountains.  These two sites' temperatures can be used to compute whether the temperatures are inverted.  Along with these two weather sites you can see the 4 other sites where data is being collected on pollution levels.  I will be focusing particulary on PM2.5 measures across the Salt Lake Valley.
+The pollution data I'll be using for this examples comes from epa.gov and the weather data comes from ncdc.noaa.gov.  You can access my R data object on [my github](https://github.com/nielsenmarkus11/time-series) page.  Salt Lake City for many years has experienced population growth which has exasterbated the inversion problem.  Inversion creates a "cap" over Utah valleys trapping pollutants on the valley floors which creates many public health issues because of the thick smog.  
 
-```{r sensor-locs}
+Below is an map indicating 4 sites where data is being collected on pollution levels.  I will be focusing particulary on PM2.5 measures across the Salt Lake Valley. I've also downloaded weather data from both the valley floor at SLC International Airport and in a meadow near Grand View peak in the Wasatch mountains.  These two sites' temperatures can be used to compute whether the temperatures are inverted.  
+
+```{r sensor-locs, echo=FALSE}
 # Visualize sensor locations
 w.sensors <- weather %>% distinct(LATITUDE,LONGITUDE)
 pm.sensors <- pm25 %>%
@@ -73,15 +78,15 @@ ggplot(dat,aes(date,resid)) +
           subtitle = paste0("RMSE: ",round(sqrt(mean(dat$resid^2,na.rm=TRUE)),2)))
 ```
 
-Okay, so when we review the model we see that the variables are somewhat useful in predicting PM2.5 levels, however our r-squared values are not that impressive.  Also, looking at our residuals, we can see that there is still something going on that we haven't accounted for.  There appears to be a yearly pattern in the residuals.  Let's use the autocorrelation function, `Acf()` available in the `forecast` package:
+Okay, so when we review the model we see that the variables are somewhat useful in predicting PM2.5 levels, however our r-squared values are not that impressive.  Also, looking at our residuals, we can see that there is still something going on that we haven't accounted for.  There appears to be a yearly pattern in the residuals.  As for investigating dependece between the PM2.5 data points, let's use the autocorrelation function, `Acf()` available in the `forecast` package:
 ```{r acf}
 Acf(dat$resid, main="ACF of OLS Residuals")
 ```
 
-Here we can see that the data is correlated up through about 12 days in the past.  This definitely violates our assumption of independence. Let's keep this in mind as we consider other models.
+Here we can see that the data is correlated up through about 12 days in the past.  This definitely violates our assumption of independence.
 
 ### Random Forest Regression
-Random Forest models don't have as many assumptions as OLS Regression, so let's try this model to see if we can do any better. I know that my RMSE's are coming from the training data itself, so it won't be as helpful in evaluating the predict-ability of our models.  Later, I will use time series cross-validation to compare each of the methods ability to predict future PM2.5 levels.
+Random Forest models don't have as many assumptions as OLS Regression, so let's try this model to see if we can do any better. Initially I'll be using the training Root Mean Squared Errors (RMSE) to compare models. However, later I will use time series cross-validation RMSE to compare each of the methods ability to predict future PM2.5 levels.
 
 ```{r rf}
 fit2 <- randomForest(sqrt(pm2.5)~inversion+wind+precip+fireworks,data=dat[!is.na(dat$pm2.5),], ntree=500)
@@ -95,6 +100,7 @@ ggplot(dat,aes(date,rf.resid)) +
 # Better but we still have some odd things going on in our data
 
 ```
+
 Once again, after looking at the residuals it still looks like something is going on here.  We still notice that there looks like there is still a seasonal trend in our residuals.  Let's also zoom in on our residual plots ordered by time and take a look:
 
 ```{r rf-zoom}
@@ -113,7 +119,8 @@ p2 <- ggplot(dat,aes(date,rf.resid)) +
 grid.arrange(p1, p2, ncol=2, top="Zoom-in of Random Forest Residuals")
 
 ```
-If you look closely you can see that we still haven't adjusted our model for the autocorrelation that is evidenced in this zoomed in residual plot. It appears that the residuals are all negative for a time then they move to be all positive.
+
+If you look closely it appears that the residuals are all negative for a time then they move to be all positive. From this we see that we still haven't adjusted our model for the autocorrelation that is evidenced in this zoomed in residual plot. To do thise we'll need to take a look at some time series models.
 
 
 ### Exponential Smoothing
@@ -317,6 +324,7 @@ ggplot(all.cv,aes(date,yhat,group=as.factor(cutoff),color=as.factor(cutoff)))+
 ```
 
 Some of the things that you'll probably notice first off is:
+
 * The reason the Exponental Smoothing model didn't perform so well.
 * Since I don't know the future regressors' values for OLS and Random Forest regression, I just set them to the values at the end of each initial window, which resulted in straight line forecasts.
 * ARIMA appears to not be as robust as other methods.
