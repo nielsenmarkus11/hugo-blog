@@ -1,0 +1,323 @@
+---
+title: Forecasting PM2.5 with forecast and prophet
+author: Mark Nielsen
+date: '2018-02-21'
+slug: forecasting-pm2-5-with-forecast-and-prophet
+categories:
+  - Programming
+tags:
+  - forecast
+  - prophet
+---
+
+<script src="/rmarkdown-libs/htmlwidgets/htmlwidgets.js"></script>
+<script src="/rmarkdown-libs/jquery/jquery.min.js"></script>
+<link href="/rmarkdown-libs/leaflet/leaflet.css" rel="stylesheet" />
+<script src="/rmarkdown-libs/leaflet/leaflet.js"></script>
+<link href="/rmarkdown-libs/leafletfix/leafletfix.css" rel="stylesheet" />
+<link href="/rmarkdown-libs/leaflet-label/leaflet.label.css" rel="stylesheet" />
+<script src="/rmarkdown-libs/leaflet-label/leaflet.label.js"></script>
+<script src="/rmarkdown-libs/Proj4Leaflet/proj4-compressed.js"></script>
+<script src="/rmarkdown-libs/Proj4Leaflet/proj4leaflet.js"></script>
+<script src="/rmarkdown-libs/leaflet-binding/leaflet.js"></script>
+<script src="/rmarkdown-libs/leaflet-providers/leaflet-providers.js"></script>
+<script src="/rmarkdown-libs/leaflet-providers-plugin/leaflet-providers-plugin.js"></script>
+<link href="/rmarkdown-libs/leaflet-awesomemarkers/leaflet.awesome-markers.css" rel="stylesheet" />
+<script src="/rmarkdown-libs/leaflet-awesomemarkers/leaflet.awesome-markers.min.js"></script>
+<link href="/rmarkdown-libs/bootstrap/bootstrap.min.css" rel="stylesheet" />
+<script src="/rmarkdown-libs/bootstrap/bootstrap.min.js"></script>
+
+
+<p>Time series, the course I often wish I had taken while completing my coursework in school. I finally got an excuse to do a comparitive dive into the different time series models in the <code>forecast</code> package in R thanks to an invitation to present at a recent Practical Data Science Meetup in Salt Lake City.</p>
+<p>In the following exercises, I’ll be comparing OLS and Random Forest Regression to the time series models available in the <code>forecast</code> package. In addition to this I’ll be taking a look at the fairly new <code>prophet</code> package released by facebook for R. Alright, let’s load some packages to get started.</p>
+<pre class="r"><code>library(tidyverse)
+library(gridExtra)
+library(lubridate)
+library(leaflet)
+library(randomForest)
+library(forecast)
+library(prophet)
+
+load(&quot;../../../time-series/data/ts-dat.Rdat&quot;)</code></pre>
+<div id="data-collection" class="section level3">
+<h3>Data Collection</h3>
+<p>The pollution data I’ll be using for this examples comes from epa.gov and the weather data comes from ncdc.noaa.gov. You can access my R data object on <a href="https://github.com/nielsenmarkus11/time-series">my github</a> page. Salt Lake City for many years has experienced population growth which has exasterbated the inversion problem. Inversion creates a “cap” over Utah valleys trapping pollutants on the valley floors which creates many public health issues because of the thick smog.</p>
+<p>Below is an map indicating 4 sites where data is being collected on pollution levels. I will be focusing particulary on PM2.5 measures across the Salt Lake Valley. I’ve also downloaded weather data from both the valley floor at SLC International Airport and in a meadow near Grand View peak in the Wasatch mountains. These two sites’ temperatures can be used to compute whether the temperatures are inverted.</p>
+<div id="htmlwidget-1" style="width:672px;height:480px;" class="leaflet html-widget"></div>
+<script type="application/json" data-for="htmlwidget-1">{"x":{"options":{"crs":{"crsClass":"L.CRS.EPSG3857","code":null,"proj4def":null,"projectedBounds":null,"options":{}}},"calls":[{"method":"addProviderTiles","args":["Esri.NatGeoWorldMap",null,null,{"errorTileUrl":"","noWrap":false,"zIndex":null,"unloadInvisibleTiles":null,"updateWhenIdle":null,"detectRetina":false,"reuseTiles":false}]},{"method":"addAwesomeMarkers","args":[[40.83,40.7781],[-111.76,-111.9694],{"icon":"tint","markerColor":"white","iconColor":"blue","spin":false,"squareMarker":false,"iconRotate":0,"font":"monospace","prefix":"glyphicon"},null,null,{"clickable":true,"draggable":false,"keyboard":true,"title":"","alt":"","zIndexOffset":0,"opacity":1,"riseOnHover":false,"riseOffset":250},null,null,null,null,null,null,null]},{"method":"addAwesomeMarkers","args":[[40.708611,40.736389,40.78422],[-112.094722,-111.872222,-111.931],{"icon":"cloud","markerColor":"black","iconColor":"gray","spin":false,"squareMarker":false,"iconRotate":0,"font":"monospace","prefix":"glyphicon"},null,null,{"clickable":true,"draggable":false,"keyboard":true,"title":"","alt":"","zIndexOffset":0,"opacity":1,"riseOnHover":false,"riseOffset":250},null,null,null,null,["490351001","490353006","490353010"],null,null]}],"setView":[[40.7,-112],10,[]],"limits":{"lat":[40.708611,40.83],"lng":[-112.094722,-111.76]}},"evals":[],"jsHooks":[]}</script>
+</div>
+<div id="ols-regression" class="section level3">
+<h3>OLS Regression</h3>
+<p>First, let’s take a look at how well our weather regressors are at predicting PM2.5 levels without considering autocorrelation or seasonality. Below, we will fit our model and look at our residuals to make sure our assumptions of normality and independence are met:</p>
+<pre class="r"><code>fit1 &lt;- lm(sqrt(pm2.5)~inversion+wind+precip+fireworks,data=dat)
+summary(fit1)</code></pre>
+<pre><code>## 
+## Call:
+## lm(formula = sqrt(pm2.5) ~ inversion + wind + precip + fireworks, 
+##     data = dat)
+## 
+## Residuals:
+##     Min      1Q  Median      3Q     Max 
+## -2.1571 -0.5555 -0.1835  0.3608  4.4629 
+## 
+## Coefficients:
+##              Estimate Std. Error t value Pr(&gt;|t|)    
+## (Intercept)  3.322431   0.066358  50.068  &lt; 2e-16 ***
+## inversion    2.527237   0.130122  19.422  &lt; 2e-16 ***
+## wind        -0.040543   0.003255 -12.454  &lt; 2e-16 ***
+## precip      -0.515741   0.175563  -2.938  0.00336 ** 
+## fireworks    0.545624   0.116089   4.700 2.85e-06 ***
+## ---
+## Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
+## 
+## Residual standard error: 0.8791 on 1456 degrees of freedom
+## Multiple R-squared:  0.3165, Adjusted R-squared:  0.3146 
+## F-statistic: 168.5 on 4 and 1456 DF,  p-value: &lt; 2.2e-16</code></pre>
+<pre class="r"><code>dat$resid[!is.na(dat$pm2.5)] &lt;- resid(fit1)
+
+# Plot the residuals
+ggplot(dat,aes(date,resid)) + 
+  geom_point() + geom_smooth() +
+  ggtitle(&quot;Linear Regression Residuals&quot;,
+          subtitle = paste0(&quot;RMSE: &quot;,round(sqrt(mean(dat$resid^2,na.rm=TRUE)),2)))</code></pre>
+<p><img src="/post/2018-02-19-forecasting-pm2-5-with-forecast-and-prophet_files/figure-html/reg-1.png" width="672" /></p>
+<p>Okay, so when we review the model we see that the variables are somewhat useful in predicting PM2.5 levels, however our r-squared values are not that impressive. Also, looking at our residuals, we can see that there is still something going on that we haven’t accounted for. There appears to be a yearly pattern in the residuals. As for investigating dependece between the PM2.5 data points, let’s use the autocorrelation function, <code>Acf()</code> available in the <code>forecast</code> package:</p>
+<pre class="r"><code>Acf(dat$resid, main=&quot;ACF of OLS Residuals&quot;)</code></pre>
+<p><img src="/post/2018-02-19-forecasting-pm2-5-with-forecast-and-prophet_files/figure-html/acf-1.png" width="672" /></p>
+<p>Here we can see that the data is correlated up through 20 or more days in the past. This definitely violates our assumption of independence.</p>
+</div>
+<div id="random-forest-regression" class="section level3">
+<h3>Random Forest Regression</h3>
+<p>Random Forest models don’t have as many assumptions as OLS Regression, so let’s try this model to see if we can do any better. Initially I’ll be using the training Root Mean Squared Errors (RMSE) to compare models. However, later I will use time series cross-validation RMSE to compare each of the methods ability to predict future PM2.5 levels.</p>
+<pre class="r"><code>fit2 &lt;- randomForest(sqrt(pm2.5)~inversion+wind+precip+fireworks,data=dat[!is.na(dat$pm2.5),], ntree=500)
+dat$rf.resid[!is.na(dat$pm2.5)] &lt;- fit2$predicted - sqrt(dat$pm2.5[!is.na(dat$pm2.5)])
+
+# Plot the residuals
+ggplot(dat,aes(date,rf.resid)) + 
+  geom_point() + geom_smooth() +
+  ggtitle(&quot;Random Forest Residuals&quot;,
+          subtitle = paste0(&quot;RMSE: &quot;,round(sqrt(fit2$mse[500]),2)))</code></pre>
+<p><img src="/post/2018-02-19-forecasting-pm2-5-with-forecast-and-prophet_files/figure-html/rf-1.png" width="672" /></p>
+<pre class="r"><code># Better but we still have some odd things going on in our data</code></pre>
+<p>Once again, after looking at the residuals it still looks like something is going on here. We notice that there still appears to be a seasonal trend in our residuals. Let’s zoom in on the residual plots over time and take a look:</p>
+<pre class="r"><code># Zoom In
+p1 &lt;- ggplot(dat,aes(date,rf.resid)) + 
+  geom_point() + geom_line() +
+  xlim(as.Date(c(&quot;2014-01-01&quot;,&quot;2014-02-28&quot;))) + 
+  geom_abline(slope=0, intercept = 0, lty=2, col = &quot;blue&quot;, lwd = 1.25)
+
+p2 &lt;- ggplot(dat,aes(date,rf.resid)) + 
+  geom_point() + geom_line() +
+  xlim(as.Date(c(&quot;2017-11-01&quot;,&quot;2017-12-31&quot;))) + 
+  geom_abline(slope=0, intercept = 0, lty=2, col = &quot;blue&quot;, lwd = 1.25)
+
+
+grid.arrange(p1, p2, ncol=2, top=&quot;Zoom-in of Random Forest Residuals&quot;)</code></pre>
+<p><img src="/post/2018-02-19-forecasting-pm2-5-with-forecast-and-prophet_files/figure-html/rf-zoom-1.png" width="672" /></p>
+<p>If you look closely it appears that the residuals are all negative for a time then they move to be all positive. From this we see that we still haven’t adjusted our model for the autocorrelation. To do this we’ll need to take a look at some time series models.</p>
+</div>
+<div id="exponential-smoothing" class="section level3">
+<h3>Exponential Smoothing</h3>
+<p>Okay, let’s get started with one of the more simple time series models, Exponential Smoothing. This is done by first converting our target column to a time series object using the <code>ts()</code> function. The <code>ts()</code> function also allows us to include a seasonal component to our data. We’ll start by setting <code>frequency = 7</code> to include weekly seasonality in our daily PM2.5 measures. In this exercise, I will be fitting 3 different models. The default <code>model</code> argument is set to <code>'ZZZ'</code> which will choose additive (<code>'A'</code>), multiplicative (<code>'M'</code>), or none (<code>'N'</code>) for each of the errors, trend, and seasonality. Our automated model has chosen <code>'MAN'</code>. Notice that this essentially removed the weekly seasonality which can be seen in the forecast below. I also fit models using all additive and all multiplicative for comparison.</p>
+<pre class="r"><code># Convert to time series data
+dat.ts &lt;- sqrt(ts(dat[,&quot;pm2.5&quot;], frequency = 7))
+
+# Exponential smoothing model with weekly seasonality
+fit3 &lt;- ets(dat.ts) # model = &quot;MAN&quot;
+fit4a &lt;- ets(dat.ts, model =&quot;AAA&quot;)
+fit4b &lt;- ets(dat.ts, model =&quot;MMM&quot;)
+# Fit models with all additive or all multiplicative features. First byte is for errors, second for trend, and third for seasonality</code></pre>
+<p>Notice that similar to linear models, the <code>predict()</code> function is available but can also be used to forecast future values based on previous values by adding an argument for the horizon, <code>h</code>. Below, I’m using the automated <code>ets</code> model to predict 25 days into the future:</p>
+<pre class="r"><code># Predict Future Values
+plot(predict(fit3,h=25),xlim=c(200,215))</code></pre>
+<p><img src="/post/2018-02-19-forecasting-pm2-5-with-forecast-and-prophet_files/figure-html/ets-forecast-1.png" width="672" /></p>
+<p>Now going back to our 3 models, we can take a look at the residuals now that we are adjusting for autocorrelation and weekly seasonality:</p>
+<pre class="r"><code>ets.mod &lt;- rbind(data.frame(day=1:sum(!is.na(dat.ts)), resid=as.numeric(residuals(fit3)), type=&quot;Auto&quot;),
+                 data.frame(day=1:sum(!is.na(dat.ts)), resid=as.numeric(residuals(fit4a)), type=&quot;Additive&quot;),
+                 data.frame(day=1:sum(!is.na(dat.ts)), resid=as.numeric(residuals(fit4b)), type=&quot;Multiplicative&quot;))
+
+# Compare the residuals of each model
+ggplot(ets.mod,aes(day,resid)) + 
+  geom_point() + geom_smooth() + 
+  facet_grid(type~.,scales=&quot;free&quot;)+
+  ggtitle(&quot;ETS Residuals with Weekly Seasonality&quot;,
+          subtitle = paste0(&quot;Auto RMSE: &quot;,round(sqrt(fit3$mse),2),
+                            &quot;   Additive RMSE: &quot;,round(sqrt(fit4a$mse),2),
+                            &quot;   Multiplicative RMSE: &quot;,round(sqrt(fit4b$mse),2)))</code></pre>
+<p><img src="/post/2018-02-19-forecasting-pm2-5-with-forecast-and-prophet_files/figure-html/ets-resid-1.png" width="672" /> There we go! Our residuals look much better, there still does appear to be some yearly seasonality that we can incorporate using some more sophisticated time series models. Let’s start with Rob Hyndman’s implementation of the TBATS model.</p>
+</div>
+<div id="tbats-trigonometric-regressors-box-cox-transformations-arma-errors-trend-seasonality" class="section level3">
+<h3>TBATS (Trigonometric regressors, Box-Cox transformations, ARMA errors, Trend, Seasonality)</h3>
+<p>Using the TBATS model is one way to incorporate multiple seasonality in our model. It’s going to automate the process of choosing a Box-Cox transformation for our target variable, PM2.5. You may have noticed that I’ve been taking the square root of PM2.5 in each of our previous models and this in part was due to the recommended Box-Cox parameter of 0.5 that came out of this model when I was first playing around with the <code>tbats()</code> function. This function will also automatically choose the parameters for the ARMA model and the fourier transforms for the seasonal trends.</p>
+<pre class="r"><code># TBATS model with weekly and yearly seasonality
+dat.ts2 &lt;- sqrt(msts(dat[!is.na(dat$pm2.5),&quot;pm2.5&quot;], seasonal.periods=c(7,365.25)))
+fit5 &lt;- tbats(dat.ts2)
+# This method takes the most time when comparing run time.
+# Down side on this is that you cannot set specific box-cox, ARMA, and fourier parameters.</code></pre>
+<p>This time series model is easy to use and can be extremely useful when modeling mutiple seasonality and autoregressive features. I do wish the <code>tbats()</code> function would allow you to pass specific Box-Cox, ARMA, and fourier parameters for your model. This would make cross-validation of my models more convenient by allowing me to be able to set the specific model for each window.</p>
+<p>Once again, you can see that predicting future values is made very easy with the <code>predict()</code> function and <code>h</code> parameter.</p>
+<pre class="r"><code># Predict future values
+plot(predict(fit5, h=25),xlim=c(4.8,5.2))</code></pre>
+<p><img src="/post/2018-02-19-forecasting-pm2-5-with-forecast-and-prophet_files/figure-html/tbats-predict-1.png" width="672" /></p>
+<p>Lastly, let’s look at the residuals and see if adding both yearly and weekly seasonality have improved our predictions:</p>
+<pre class="r"><code># Plot the residuals
+tbats.mod &lt;- data.frame(day=1:sum(!is.na(dat.ts2)),resid=as.numeric(residuals(fit5)))
+ggplot(tbats.mod,aes(day,resid)) + 
+  geom_point() + geom_smooth() + 
+  ggtitle(&quot;TBATS Resids with Dual Seasonality&quot;,
+          subtitle = paste0(&quot;Auto RMSE: &quot;,round(sqrt(mean((residuals(fit5))^2)),2)))</code></pre>
+<p><img src="/post/2018-02-19-forecasting-pm2-5-with-forecast-and-prophet_files/figure-html/tbats-resid-1.png" width="672" /> Wow! This looks much better. This random cloud of data around the line <code>y = 0</code> is typically what we are looking for in a good model fit. Notice also that the training RMSE is much better for this model.</p>
+</div>
+<div id="arima-with-regressors-autoregressive-integraged-moving-average" class="section level3">
+<h3>ARIMA with Regressors (AutoRegressive Integraged Moving Average)</h3>
+<p>The last piece to time series models is being able to add regressors to the multiple seasonality and autocorrelation adjustments. The <code>auto.arima()</code> function can have all of these included in the model by using the <code>fourier()</code> transform function and the <code>xreg</code> argument.</p>
+<p>In this portion of the exercise, because my regressors are also time series I need to make sure that I also forcast each of those regressors before using them to forecast the PM2.5 level.</p>
+<pre class="r"><code># ARIMA with weekly and yearly seasonality with regressors
+regs &lt;- dat[!is.na(dat$pm2.5),c(&quot;precip&quot;,&quot;wind&quot;,&quot;inversion&quot;,&quot;fireworks&quot;)]
+
+# Forecast weather regressors
+weather.ts &lt;- msts(dat[,c(&quot;precip&quot;,&quot;wind&quot;,&quot;inversion_diff&quot;)],seasonal.periods = c(7,365.25))
+precip &lt;- auto.arima(weather.ts[,1])
+fprecip &lt;- as.numeric(data.frame(forecast(precip,h=25))$Point.Forecast)
+wind &lt;- auto.arima(weather.ts[,2])
+fwind &lt;- as.numeric(data.frame(forecast(wind,h=25))$Point.Forecast)
+inversion &lt;- auto.arima(weather.ts[,3])
+finversion &lt;- as.numeric(data.frame(forecast(inversion,h=25))$Point.Forecast)
+
+fregs &lt;- data.frame(precip=fprecip,wind=fwind,inversion=as.numeric(finversion&lt;0),fireworks=0)
+
+# Seasonality
+z &lt;- fourier(dat.ts2, K=c(2,5))
+zf &lt;- fourier(dat.ts2, K=c(2,5), h=25)
+
+# Fit the model
+fit &lt;- auto.arima(dat.ts2, xreg=cbind(z,regs), seasonal=FALSE)
+
+# Predict Future Values
+# This time we need future values of the regressors as well.
+fc &lt;- forecast(fit, xreg=cbind(zf,fregs), h=25)
+plot(fc,xlim=c(4.8,5.2))</code></pre>
+<p><img src="/post/2018-02-19-forecasting-pm2-5-with-forecast-and-prophet_files/figure-html/unnamed-chunk-1-1.png" width="672" /></p>
+<p>Again, the residuals do look much better than our residuals from the OLS and Random Forest Regression models.</p>
+<pre class="r"><code># Plot the residuals
+arima.mod &lt;- data.frame(day=1:sum(!is.na(dat.ts)),resid=as.numeric(residuals(fit)))
+
+ggplot(arima.mod,aes(day,resid)) + 
+  geom_point() + geom_smooth() + 
+  ggtitle(&quot;Arima Resids with Seasonality and Regressors&quot;,
+          subtitle = paste0(&quot;RMSE: &quot;,round(sqrt(mean((residuals(fit))^2)),2)))</code></pre>
+<p><img src="/post/2018-02-19-forecasting-pm2-5-with-forecast-and-prophet_files/figure-html/arima-resid-1.png" width="672" /></p>
+</div>
+<div id="prophet" class="section level3">
+<h3>prophet</h3>
+<p>And finally, let’s take a look at fitting a basic model using the <code>prophet</code> package. The <code>prophet</code> package is using STAN to to fit an additive model by including seasonality, autocorrelation, extra regressors, etc. One of the nice features of the <code>prophet()</code> function is that it will also automatically choose change points in your time series. The default number of change points is set to <code>25</code>. This allows the time series models to be a little bit more robust in comparison to other models. Once again, I’m also using the <code>prophet()</code> forecast function to forecast my regressors that I’m passing into the final <code>prophet</code> model to predict PM2.5.</p>
+<pre class="r"><code>pdat &lt;- data.frame(ds=dat$date,
+                   y=sqrt(dat$pm2.5),
+                   precip=dat$precip,
+                   wind=dat$wind,
+                   inversion_diff=dat$inversion_diff,
+                   inversion=dat$inversion_,
+                   fireworks=dat$fireworks)
+
+# Forecast weather regressors
+pfdat &lt;- data.frame(ds=max(dat$date) + 1:25)
+pprecip &lt;- pdat %&gt;% 
+  select(ds,y=precip) %&gt;% 
+  prophet() %&gt;%
+  predict(pfdat)</code></pre>
+<pre><code>## Initial log joint probability = -5.77805
+## Optimization terminated normally: 
+##   Convergence detected: relative gradient magnitude is below tolerance</code></pre>
+<pre class="r"><code>pwind &lt;- pdat %&gt;% 
+  select(ds,y=wind) %&gt;% 
+  prophet() %&gt;%
+  predict(pfdat)</code></pre>
+<pre><code>## Initial log joint probability = -46.5575
+## Optimization terminated normally: 
+##   Convergence detected: relative gradient magnitude is below tolerance</code></pre>
+<pre class="r"><code>pinversion &lt;- pdat %&gt;% 
+  select(ds,y=inversion_diff) %&gt;% 
+  prophet() %&gt;%
+  predict(pfdat)</code></pre>
+<pre><code>## Initial log joint probability = -55.0515
+## Optimization terminated normally: 
+##   Convergence detected: relative gradient magnitude is below tolerance</code></pre>
+<pre class="r"><code>fdat &lt;-  data.frame(ds=pfdat$ds,
+                    precip=pprecip$yhat,
+                    wind=pwind$yhat,
+                    inversion=as.numeric(pinversion$yhat&lt;0),
+                    fireworks = 0)
+
+# Fit the model (Seasonality automatically determined)
+fit6 &lt;- prophet() %&gt;% 
+  add_regressor(&#39;precip&#39;) %&gt;% 
+  add_regressor(&#39;wind&#39;) %&gt;% 
+  add_regressor(&#39;inversion&#39;) %&gt;% 
+  add_regressor(&#39;fireworks&#39;) %&gt;% 
+  fit.prophet(pdat)</code></pre>
+<pre><code>## Initial log joint probability = -120.752
+## Optimization terminated normally: 
+##   Convergence detected: relative gradient magnitude is below tolerance</code></pre>
+<p>We also see that the predict funtion can also be used with the <code>prophet</code> model object to forecast future values by adding the future dataframe as a second argument to the <code>predict()</code> function.</p>
+<pre class="r"><code># Forecast future values
+forecast &lt;- predict(fit6, fdat)</code></pre>
+<p>Looking at the residuals below, you can see that we’re starting to see some of the original seasonal trend showing slightly in the residuals that we saw previously in the OLS and Random Forest models.</p>
+<pre class="r"><code># Get the residuals
+fpred &lt;- predict(fit6)
+fpred$ds &lt;- as.Date(fpred$ds)
+fpred &lt;- pdat %&gt;% left_join(fpred,by=&quot;ds&quot;)
+fpred$resid &lt;- fpred$y - fpred$yhat
+
+# Plot the residuals
+ggplot(fpred,aes(ds,resid)) + 
+  geom_point() + geom_smooth() + 
+  ggtitle(&quot;Prophet with Seasonality and Regressors&quot;,
+          subtitle = paste0(&quot;RMSE: &quot;,round(sqrt(mean(fpred$resid^2)),2)))</code></pre>
+<p><img src="/post/2018-02-19-forecasting-pm2-5-with-forecast-and-prophet_files/figure-html/prophet-resid-1.png" width="672" /></p>
+</div>
+<div id="cross-validation-comparison-of-models" class="section level3">
+<h3>Cross-Validation Comparison of Models</h3>
+<p>Okay, now that we’ve gone over the basics of each of the models as well as assessing the model fit, let’s compare how well the models predict future PM2.5 levels. This cross validation is performed by assigning a rolling window in our time series. We split this window into two pieces, the “initial” time period and the “horizon”. We fit our model using the initial time period and compare our prediction of the horizon to its actual values. I picked the RMSE as my loss function in evaluating predictive performance.</p>
+<p>A typical comparison is to compute the RMSE for each of the days in your horizon by combining all the differences between ‘y’ and ‘yhat’ from each of your rolling validations:</p>
+<pre class="r"><code># RMSE by horizon
+all.cv %&gt;% 
+  group_by(model,day) %&gt;% 
+  summarise(rmse=sqrt(mean((y-yhat)^2))) %&gt;% 
+  ggplot(.,aes(x=day,y=rmse,group=model,color=model)) +
+  geom_line(alpha=.75) + geom_point(alpha=.75)</code></pre>
+<p><img src="/post/2018-02-19-forecasting-pm2-5-with-forecast-and-prophet_files/figure-html/unnamed-chunk-3-1.png" width="672" /> This is definitely an interesting result. Clearly the Exponential Smoothing model is not the best predictor with this data. Also, when comparing how well each model predicts future events, it appears that the OLS and Random Forest regression models perform just as well as the TBATS, ARIMA, and prophet models. In the plot below, we can also take a look at how each of these forecasted data looks like for the year of 2017.</p>
+<pre class="r"><code># Prediction behaviors of different methods
+ggplot(all.cv,aes(date,yhat,group=as.factor(cutoff),color=as.factor(cutoff)))+
+  geom_line()+
+  geom_line(aes(y=y),color=&quot;black&quot;,alpha=.15)+#geom_point(aes(y=y),color=&quot;black&quot;,alpha=.15)+
+  facet_wrap(~model)+ guides(color=&quot;none&quot;) +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())</code></pre>
+<p><img src="/post/2018-02-19-forecasting-pm2-5-with-forecast-and-prophet_files/figure-html/unnamed-chunk-4-1.png" width="672" /></p>
+<p>Some of the things that you’ll probably notice first off is:</p>
+<ul>
+<li>The reason the Exponental Smoothing model didn’t perform so well.</li>
+<li>Since I don’t know the future regressors’ values for OLS and Random Forest regression, I just set them to the values at the end of each initial window, which resulted in straight line forecasts.</li>
+<li>ARIMA appears to not be as robust as other methods.</li>
+</ul>
+</div>
+<div id="conclusion" class="section level3">
+<h3>Conclusion</h3>
+<p>Of all these methods, I would probably decide on either the TBATS or prophet model in forecasting future data. I hope you have enjoyed these exercises and intro to time series in R!</p>
+</div>
+<div id="where-to-learn-more" class="section level3">
+<h3>Where to learn more?</h3>
+<ul>
+<li><a href="https://www.futurelearn.com/courses/business-analytics-forecasting">FutureLearn Forecasting MOOC</a></li>
+<li><a href="http://otexts.org/fpp/">Forecasting: Principles and Practice</a></li>
+<li><a href="https://facebook.github.io/prophet/">Prophet: Forecasting at Scale</a></li>
+</ul>
+</div>
+<div id="references" class="section level3">
+<h3>References</h3>
+<p>Hyndman, R.J. and Athanasopoulos, G. (2013) Forecasting: principles and practice. OTexts: Melbourne, Australia. <a href="http://otexts.org/fpp/" class="uri">http://otexts.org/fpp/</a>. Accessed on February 11, 2018.</p>
+<p>National Center for Environmental Information. Climate Data Online available at <a href="https://www.ncdc.noaa.gov/cdo-web" class="uri">https://www.ncdc.noaa.gov/cdo-web</a>. Accessed February 11, 2018.</p>
+<p>Sean Taylor and Ben Letham (2017). prophet: Automatic Forecasting Procedure. R package version 0.2.1.9000. <a href="https://facebook.github.io/prophet/" class="uri">https://facebook.github.io/prophet/</a>.</p>
+<p>US Environmental Protection Agency. Air Quality System Data Mart [internet database] available at <a href="http://www.epa.gov/ttn/airs/aqsdatamart" class="uri">http://www.epa.gov/ttn/airs/aqsdatamart</a>. Accessed?February 11, 2018.</p>
+</div>
