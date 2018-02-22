@@ -1,7 +1,7 @@
 ---
 title: Forecasting PM2.5 with forecast and prophet
 author: Mark Nielsen
-date: '2018-02-19'
+date: '2018-02-21'
 slug: forecasting-pm2-5-with-forecast-and-prophet
 categories:
   - Programming
@@ -83,7 +83,7 @@ Okay, so when we review the model we see that the variables are somewhat useful 
 Acf(dat$resid, main="ACF of OLS Residuals")
 ```
 
-Here we can see that the data is correlated up through about 12 days in the past.  This definitely violates our assumption of independence.
+Here we can see that the data is correlated up through 20 or more days in the past.  This definitely violates our assumption of independence.
 
 ### Random Forest Regression
 Random Forest models don't have as many assumptions as OLS Regression, so let's try this model to see if we can do any better. Initially I'll be using the training Root Mean Squared Errors (RMSE) to compare models. However, later I will use time series cross-validation RMSE to compare each of the methods ability to predict future PM2.5 levels.
@@ -101,7 +101,7 @@ ggplot(dat,aes(date,rf.resid)) +
 
 ```
 
-Once again, after looking at the residuals it still looks like something is going on here.  We still notice that there looks like there is still a seasonal trend in our residuals.  Let's also zoom in on our residual plots ordered by time and take a look:
+Once again, after looking at the residuals it still looks like something is going on here.  We notice that there still appears to be a seasonal trend in our residuals.  Let's zoom in on the residual plots over time and take a look:
 
 ```{r rf-zoom}
 # Zoom In
@@ -120,11 +120,11 @@ grid.arrange(p1, p2, ncol=2, top="Zoom-in of Random Forest Residuals")
 
 ```
 
-If you look closely it appears that the residuals are all negative for a time then they move to be all positive. From this we see that we still haven't adjusted our model for the autocorrelation that is evidenced in this zoomed in residual plot. To do thise we'll need to take a look at some time series models.
+If you look closely it appears that the residuals are all negative for a time then they move to be all positive. From this we see that we still haven't adjusted our model for the autocorrelation. To do this we'll need to take a look at some time series models.
 
 
 ### Exponential Smoothing
-Okay, let's get started with one of the more simple time series models, Exponential Smoothing.  This is done by first converting our target column to a time series object using the `ts()` function.  The `ts()` function also allows us to include a seasonal component to our data.  We'll start by setting `frequency = 7` to include weekly seasonality in our daily PM2.5 measures. In this excersize I will be fitting 3 different models. The default `model` argument is set to `'ZZZ'` which will choose additive (`'A'`), multiplicative (`'M'`), or none (`'N'`) for each of the errors, trend, and seasonality.  Our automated model has chosen `'MAN'`.  Notice that this essentially removing the weekly seasonality which can be seen in the forecast below. I also fit models using all additive and all multiplicative for comparison.
+Okay, let's get started with one of the more simple time series models, Exponential Smoothing.  This is done by first converting our target column to a time series object using the `ts()` function.  The `ts()` function also allows us to include a seasonal component to our data.  We'll start by setting `frequency = 7` to include weekly seasonality in our daily PM2.5 measures. In this exercise, I will be fitting 3 different models. The default `model` argument is set to `'ZZZ'` which will choose additive (`'A'`), multiplicative (`'M'`), or none (`'N'`) for each of the errors, trend, and seasonality.  Our automated model has chosen `'MAN'`.  Notice that this essentially removed the weekly seasonality which can be seen in the forecast below. I also fit models using all additive and all multiplicative for comparison.
 ```{r ets}
 # Convert to time series data
 dat.ts <- sqrt(ts(dat[,"pm2.5"], frequency = 7))
@@ -193,7 +193,7 @@ Wow! This looks much better. This random cloud of data around the line `y = 0` i
 ### ARIMA with Regressors (AutoRegressive Integraged Moving Average)
 The last piece to time series models is being able to add regressors to the multiple seasonality and autocorrelation adjustments.  The `auto.arima()` function can have all of these included in the model by using the `fourier()` transform function and the `xreg` argument.
 
-In this exercise, because my regressors are also time series I need to make sure that I also forcast each fo those regressors before forecasting the PM2.5 level.
+In this portion of the exercise, because my regressors are also time series I need to make sure that I also forcast each of those regressors before using them to forecast the PM2.5 level.
 ```{r}
 # ARIMA with weekly and yearly seasonality with regressors
 regs <- dat[!is.na(dat$pm2.5),c("precip","wind","inversion","fireworks")]
@@ -281,7 +281,7 @@ We also see that the predict funtion can also be used with the `prophet` model o
 # Forecast future values
 forecast <- predict(fit6, fdat)
 ```
-Looking at the residuals below, you can see that we're starting to see some of the seasonal trend in the residuals that we did previously in the OLS and Random Forest models.
+Looking at the residuals below, you can see that we're starting to see some of the original seasonal trend showing slightly in the residuals that we saw previously in the OLS and Random Forest models.
 ```{r prophet-resid}
 # Get the residuals
 fpred <- predict(fit6)
@@ -299,7 +299,7 @@ ggplot(fpred,aes(ds,resid)) +
 
 
 ### Cross-Validation Comparison of Models
-Okay, now that we've gone over the basics of each of the models, let's compare how well the models predict future PM2.5 levels.  This cross validation is performed by assigning a rolling window in our time series.  We split this window into two pieces, the "initial" time period and the "horizon".  We fit our model using the initial time period and compare our prediction of the horizon to its actual values.  I picked the RMSE as my loss function in evaluating predictive performance.
+Okay, now that we've gone over the basics of each of the models as well as assessing the model fit, let's compare how well the models predict future PM2.5 levels.  This cross validation is performed by assigning a rolling window in our time series.  We split this window into two pieces, the "initial" time period and the "horizon".  We fit our model using the initial time period and compare our prediction of the horizon to its actual values.  I picked the RMSE as my loss function in evaluating predictive performance.
 
 A typical comparison is to compute the RMSE for each of the days in your horizon by combining all the differences between 'y' and 'yhat' from each of your rolling validations:
 ```{r}
