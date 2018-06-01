@@ -48,13 +48,13 @@ knitr::include_graphics("/img/ODBC 3.PNG")
 **Step 5:** Define your default database and click "Next". 
 
 ```{r}
-knitr::include_graphics("/img/ODBC 4.PNG")
+knitr::include_graphics("/img/ODBC 4b.PNG")
 ```
 
 **Step 6:** Click "Next" through any remaining windows, then click "Finish".  A window should pop up to test the connection.  Double check your options then click "Test Data Source". 
 
 ```{r}
-knitr::include_graphics("/img/ODBC 4b.PNG")
+knitr::include_graphics("/img/ODBC 4.PNG")
 ```
 
 **Step 7:** If it was successful it should give you the following message. Click "OK". 
@@ -73,7 +73,7 @@ knitr::include_graphics("/img/ODBC 6.PNG")
 
 In the past I have used the `RODBC` package but recently I have found that the `odbc` package plays much nicer with other database tools like `DBI` and `dbplyr`.  Plus it has very similar syntax to the `RJDBC` package and for consistency sake I've made the switch.
 
-```{r, echo=TRUE, eval=FALSE}
+```{r echo=TRUE, eval=FALSE}
 install.packages('odbc')
 ```
 
@@ -81,21 +81,31 @@ install.packages('odbc')
 
 Alright, we are ready to make our connection... drum-roll please. To start let's make our connection using the DNS configuration we set up earlier.
 
-```{r}
+```{r include=FALSE}
 library(odbc)
+library(dplyr)
+library(dbplyr)
+```
 
+```{r echo=TRUE, eval=FALSE}
+library(odbc)
+library(dplyr)
+library(dbplyr)
+```
+
+```{r echo=TRUE}
 # Connect using the DSN
 db <- DBI::dbConnect(odbc::odbc(), "SQL")
 ```
 
 That was easy! Now we're ready to roll with our data. If you opted out of creating a DSN, the below code is what you would use to connect.  There are a lot more key strokes but the bonus is that there is no additional setup needed outside of R, which can be handy when you are trying to share your code with coworkers that want to connect to the database too.
 
-```{r}
+```{r wo-dsn, echo=TRUE}
 # Connect without a DSN
 db <- DBI::dbConnect(odbc::odbc(),
                      Driver = 'ODBC Driver 13 for SQL Server',
-                     Server = 'DB-DEV',
-                     Database = "ML",
+                     Server = 'localhost\\SQLEXPRESS',
+                     Database = "master",
                      trusted_connection = 'yes',
                      Port = 1433
                      )
@@ -104,22 +114,23 @@ db <- DBI::dbConnect(odbc::odbc(),
 
 Okay, now that we are connected we are ready to get started on our analysis.  We can read/write data to the database using the follwing commands:
 
-```{r}
+```{r echo=TRUE}
 # Write iris data to MS SQL Server
 # DBI::dbWriteTable(db,"iris",iris)
 
 # Read data from MS SQL Server
 my.iris <- DBI::dbGetQuery(db,"SELECT * FROM IRIS")
 head(my.iris)
+```
 
-# Finally use the dbplyr package to extend the dplyr functions to our database connection
-library(dplyr)
-library(dbplyr)
+Finally, use the dbplyr package to extend the dplyr functions to our database connection.
 
+```{r echo=TRUE}
 smry <- tbl(db,"iris") %>% collect
 head(smry)
 
-# And finally don't forget to disconnect
+# Don't forget to disconnect
 dbDisconnect(db)
 ```
+
 
