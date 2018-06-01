@@ -1,0 +1,122 @@
+---
+title: Setting up an ODBC connection with MS SQL Server on Windows
+author: Mark Nielsen
+date: '2018-05-31'
+slug: odbc-ms-sql-server-windows
+categories:
+  - Programming
+tags:
+  - odbc
+  - sql-server
+  - windows
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+Connecting to databases is a critical piece of data anlaysis in R. In most analytic roles the data we consume is going to be found in databases. Of these some of the most common are SQL databases like MS SQL Server, PostgreSQL, and Oracle in addition to many others. In this how-to blog, I'll walk you through the major steps of configuring your machine and R to be able to connect to a MS SQL Server database from R on Windows.  Similar steps can be followed to set up connections to other databases, however, driver installation and configuration will likely be slightly different.
+
+### Downloading and Installing the Drivers
+
+The first step is to download the necessary odbc drivers for your database.  Because most Windows installations come with the MS SQL Server drivers installed we'll breeze over this step.  If you don't have it installed you can follow these directions [here](https://docs.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server?view=sql-server-2017).
+
+### Setting up a DSN for your ODBC Connection
+
+This step is not necessary, but I have found that configuring a DSN (aka. "Data Source Name") can simplify your code configuration in R. 
+
+**STEP 1:** Search "ODBC" in the Start Menu search and open "ODBC Data Source Administrator (64-bit)". 
+
+**Step 2:** Select "Add" under the "User DSN" tab.
+
+```{r}
+knitr::include_graphics("/img/ODBC 1.PNG")
+```
+
+**Step 3:** Select the corresponding ODBC driver for which you wish to set up a data source and Click "Finish".
+
+```{r}
+knitr::include_graphics("/img/ODBC 2.PNG")
+```
+
+**Step 4:** Give your DSN a "Name" and "Server" name/IP address and click "Next". 
+
+```{r}
+knitr::include_graphics("/img/ODBC 3.PNG")
+```
+
+**Step 5:** Define your default database and click "Next". 
+
+```{r}
+knitr::include_graphics("/img/ODBC 4.PNG")
+```
+
+**Step 6:** Click "Next" through any remaining windows, then click "Finish".  A window should pop up to test the connection.  Double check your options then click "Test Data Source". 
+
+```{r}
+knitr::include_graphics("/img/ODBC 4b.PNG")
+```
+
+**Step 7:** If it was successful it should give you the following message. Click "OK". 
+
+```{r}
+knitr::include_graphics("/img/ODBC 5.PNG")
+```
+
+**Step 8:** Finally you should see your newly defined DSN listed under the "User DSN" tab.  Click "OK" to exit the ODBC DSN configuration tool.
+
+```{r}
+knitr::include_graphics("/img/ODBC 6.PNG")
+```
+
+### Install the `odbc` Package in R
+
+In the past I have used the `RODBC` package but recently I have found that the `odbc` package plays much nicer with other database tools like `DBI` and `dbplyr`.  Plus it has very similar syntax to the `RJDBC` package and for consistency sake I've made the switch.
+
+```{r, echo=TRUE, eval=FALSE}
+install.packages('odbc')
+```
+
+### Connecting to the Database from R
+
+Alright, we are ready to make our connection... drum-roll please. To start let's make our connection using the DNS configuration we set up earlier.
+
+```{r}
+library(odbc)
+
+# Connect using the DSN
+db <- DBI::dbConnect(odbc::odbc(), "SQL")
+```
+
+That was easy! Now we're ready to roll with our data. If you opted out of creating a DSN, the below code is what you would use to connect.  There are a lot more key strokes but the bonus is that there is no additional setup needed outside of R, which can be handy when you are trying to share your code with coworkers that want to connect to the database too.
+
+```{r}
+# Connect without a DSN
+db <- DBI::dbConnect(odbc::odbc(),
+                     Driver = 'ODBC Driver 13 for SQL Server',
+                     Server = 'DB-DEV',
+                     Database = "ML",
+                     trusted_connection = 'yes',
+                     Port = 1433
+                     )
+
+```
+
+Okay, now that we are connected we are ready to get started on our analysis.  We can read/write data to the database using the follwing commands:
+
+```{r}
+# Write iris data to MS SQL Server
+# dbWriteTable(db,"iris",iris)
+
+# Read data from MS SQL Server
+my.iris <- dbGetQuery(db,"SELECT * FROM IRIS")
+
+# Finally use the dbplyr package to extend the dplyr functions to our database connection
+library(dbplyr)
+
+smry <- tbl(db,"iris") %>% collect
+
+# And finally don't forget to disconnect
+dbDisconnect(db)
+```
+
