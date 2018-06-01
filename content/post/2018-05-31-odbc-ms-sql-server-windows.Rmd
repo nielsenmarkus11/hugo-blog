@@ -2,13 +2,13 @@
 title: Setting up an ODBC connection with MS SQL Server on Windows
 author: Mark Nielsen
 date: '2018-05-31'
-slug: odbc-ms-sql-server-windows
 categories:
   - Programming
 tags:
   - odbc
   - sql-server
   - windows
+slug: odbc-ms-sql-server-windows
 ---
 
 ```{r setup, include=FALSE}
@@ -106,15 +106,18 @@ Okay, now that we are connected we are ready to get started on our analysis.  We
 
 ```{r}
 # Write iris data to MS SQL Server
-# dbWriteTable(db,"iris",iris)
+# DBI::dbWriteTable(db,"iris",iris)
 
 # Read data from MS SQL Server
-my.iris <- dbGetQuery(db,"SELECT * FROM IRIS")
+my.iris <- DBI::dbGetQuery(db,"SELECT * FROM IRIS")
+head(my.iris)
 
 # Finally use the dbplyr package to extend the dplyr functions to our database connection
+library(dplyr)
 library(dbplyr)
 
 smry <- tbl(db,"iris") %>% collect
+head(smry)
 
 # And finally don't forget to disconnect
 dbDisconnect(db)
