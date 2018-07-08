@@ -36,6 +36,9 @@ ignoreFiles = ["\\.Rmd$", "\\.Rmarkdown$", "_files$", "_cache$"]
 
     # Format dates with Go's time formatting
     date_format = "2006-01-02"
+    dateformfull = "Mon Jan 2 2006 15:04:05 MST"
+    description = "R-blog by Mark Nielsen"
+    copyright = "Copyright © 2018 Mark Nielsen"
 
     # Add custom assets with their paths relative to the static folder
 	custom_css = []
