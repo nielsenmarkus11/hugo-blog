@@ -3,11 +3,12 @@ title: Connecting R to PostgreSQL on Linux
 author: Mark Nielsen
 date: '2018-07-07'
 slug: connecting-r-to-postgresql-on-linux
+banner: 'banners/r-plus-postgres.jpg'
 categories:
   - Programming
 tags:
-  - RJDBC
   - odbc
+  - RJDBC
   - RPostgreSQL
 ---
 
@@ -104,7 +105,6 @@ DBI::dbGetQuery(db,"SELECT * FROM MTCARS")
 DBI::dbDisconnect(db)
 ```
 Now you are ready to begin your analysis with your data!
-
 
 ### 3 - RJDBC Package Setup
 Finally, the last way to configure a connection to the PostgreSQL database can be done via the `RJDBC` package.  The first step in this configuration is to download the jdbc jar file from [here](https://jdbc.postgresql.org/download.html). I've put this in my home directory, `~`, and will reference this file in the `JDBC()` function below.  Once you have the jar file you can install the `RJDBC` package in R.
